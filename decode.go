@@ -8,11 +8,11 @@ package ics
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io"
-	"os"
-	"time"
 	"sort"
 	"strings"
+	"time"
 )
 
 type Calendar struct {
@@ -21,11 +21,11 @@ type Calendar struct {
 
 type Event struct {
 	UID                            string
-	Start, End                     *time.Time
+	Start, End                     time.Time
 	Summary, Location, Description string
 }
 
-func Decode(rd io.Reader) (c *Calendar, err os.Error) {
+func Decode(rd io.Reader) (c *Calendar, err error) {
 	r := bufio.NewReader(rd)
 	for {
 		key, value, err := decodeLine(r)
@@ -35,7 +35,7 @@ func Decode(rd io.Reader) (c *Calendar, err os.Error) {
 		if key == "BEGIN" {
 			if c == nil {
 				if value != "VCALENDAR" {
-					return nil, os.NewError("didn't find BEGIN:VCALENDAR")
+					return nil, errors.New("didn't find BEGIN:VCALENDAR")
 				}
 				c = new(Calendar)
 			}
@@ -55,10 +55,10 @@ func Decode(rd io.Reader) (c *Calendar, err os.Error) {
 	return c, nil
 }
 
-func decodeEvent(r *bufio.Reader) (*Event, os.Error) {
+func decodeEvent(r *bufio.Reader) (*Event, error) {
 	e := new(Event)
 	var key, value string
-	var err os.Error
+	var err error
 	for {
 		if err != nil {
 			return nil, err
@@ -67,7 +67,7 @@ func decodeEvent(r *bufio.Reader) (*Event, os.Error) {
 		switch key {
 		case "END":
 			if value != "VEVENT" {
-				return nil, os.NewError("unexpected END value")
+				return nil, errors.New("unexpected END value")
 			}
 			return e, nil
 		case "UID":
@@ -87,27 +87,27 @@ func decodeEvent(r *bufio.Reader) (*Event, os.Error) {
 	panic("unreachable")
 }
 
-func decodeTime(value string) (*time.Time, os.Error) {
+func decodeTime(value string) (time.Time, error) {
 	const layout = "20060102T150405Z"
 	return time.Parse(layout, value)
 }
 
-func decodeLine(r *bufio.Reader) (key, value string, err os.Error) {
+func decodeLine(r *bufio.Reader) (key, value string, err error) {
 	var buf bytes.Buffer
 	for {
 		// get full line
 		b, isPrefix, err := r.ReadLine()
 		if err != nil {
-			if err == os.EOF {
+			if err == io.EOF {
 				err = io.ErrUnexpectedEOF
 			}
 			return "", "", err
 		}
 		if isPrefix {
-			return "", "", os.NewError("unexpected long line")
+			return "", "", errors.New("unexpected long line")
 		}
 		if len(b) == 0 {
-			return "", "", os.NewError("unexpected blank line")
+			return "", "", errors.New("unexpected blank line")
 		}
 		if b[0] == ' ' {
 			b = b[1:]
@@ -121,7 +121,7 @@ func decodeLine(r *bufio.Reader) (key, value string, err os.Error) {
 	}
 	p := strings.SplitN(buf.String(), ":", 2)
 	if len(p) != 2 {
-		return "", "", os.NewError("bad line, couldn't find key:value")
+		return "", "", errors.New("bad line, couldn't find key:value")
 	}
 	return p[0], p[1], nil
 }
@@ -129,10 +129,13 @@ func decodeLine(r *bufio.Reader) (key, value string, err os.Error) {
 type eventList []*Event
 
 func (l eventList) Less(i, j int) bool {
-	if l[i].Start == nil || l[j].Start == nil {
+	if l[i].Start.IsZero() {
 		return true
 	}
-	return l[i].Start.Seconds() < l[j].Start.Seconds()
+	if l[j].Start.IsZero() {
+		return false
+	}
+	return l[i].Start.Before(l[j].Start)
 }
 func (l eventList) Swap(i, j int) { l[i], l[j] = l[j], l[i] }
 func (l eventList) Len() int      { return len(l) }
