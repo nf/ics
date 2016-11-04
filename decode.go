@@ -76,6 +76,10 @@ func decodeEvent(r *bufio.Reader) (*Event, error) {
 			e.Start, err = decodeTime(value)
 		case "DTEND":
 			e.End, err = decodeTime(value)
+		case "DTSTART;VALUE=DATE":
+			e.Start, err = decodeDate(value)
+		case "DTEND;VALUE=DATE":
+			e.End, err = decodeDate(value)
 		case "SUMMARY":
 			e.Summary = value
 		case "LOCATION":
@@ -89,6 +93,11 @@ func decodeEvent(r *bufio.Reader) (*Event, error) {
 
 func decodeTime(value string) (time.Time, error) {
 	const layout = "20060102T150405Z"
+	return time.Parse(layout, value)
+}
+
+func decodeDate(value string) (time.Time, error) {
+	const layout = "20060102"
 	return time.Parse(layout, value)
 }
 
